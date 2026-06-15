@@ -24,11 +24,6 @@ def lookup_plant(plant_name: str) -> dict:
     """
     Search the plant database for a plant by name and return its care information.
 
-    TODO — Milestone 1:
-
-    Right now this always returns a "not found" response. Your job is to implement
-    the search logic so it can actually find plants.
-
     The plant database (_plant_db) is a dict where keys are lowercase slugs like
     "pothos", "snake_plant", "fiddle_leaf_fig". Each plant also has a "display_name"
     field and an "aliases" list with common alternate names.
@@ -45,17 +40,32 @@ def lookup_plant(plant_name: str) -> dict:
 
     Return format when not found:
       {"found": False, "name": <original input>, "message": <helpful string>}
-
-    The message in the not-found case matters — the agent will use it to decide
-    what to tell the user. Your spec has a dedicated field for this — think about
-    what information would actually be helpful to the agent.
-
-    Before writing code, complete the lookup_plant section of specs/tool-functions-spec.md.
     """
+    normalized = plant_name.strip().lower()
+
+    # 1. Direct key match
+    if normalized in _plant_db:
+        return {"found": True, "plant": _plant_db[normalized]}
+
+    # 2. Display name match and 3. Alias match
+    for key, plant in _plant_db.items():
+        if plant.get("display_name", "").strip().lower() == normalized:
+            return {"found": True, "plant": plant}
+        
+        aliases = [alias.strip().lower() for alias in plant.get("aliases", [])]
+        if normalized in aliases:
+            return {"found": True, "plant": plant}
+
+    # Not found case
+    available_keys = ", ".join(sorted(list(_plant_db.keys())))
     return {
         "found": False,
         "name": plant_name,
-        "message": "Plant lookup not yet implemented. Complete Milestone 1.",
+        "message": (
+            f"Plant '{plant_name}' not found in the database. Available plants are: {available_keys}. "
+            "Advise the user that this specific plant is not in the database, suggest any similar/matching "
+            "names from the list of available plants if applicable, or offer general guidance if they describe the plant."
+        ),
     }
 
 

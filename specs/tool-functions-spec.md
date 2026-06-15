@@ -69,9 +69,14 @@ likely match for clean user input. Aliases are the broadest net, so they go last
 
 *Aliases are stored as a list of strings. How will you check if the normalized input matches any alias in the list? Write your approach in pseudocode or plain English.*
 
+```python
+# Iterate through each plant's aliases, convert each alias to lowercase, and check if it matches the normalized plant_name:
+normalized in [alias.strip().lower() for alias in plant["aliases"]]
 ```
-[your answer here]
-```
+
+> [!NOTE]
+> **Scale-up Consideration:**
+> For the current small dataset of 15 plants, a sequential search is extremely fast. However, if the database scales to thousands of plants, a linear O(N) scan will slow down. In that case, we should build an **inverted lookup dictionary (hash map)** mapping lowercase aliases and display names to the plant objects at module initialization, bringing the lookup time complexity down to O(1).
 
 ---
 
@@ -80,8 +85,12 @@ likely match for clean user input. Aliases are the broadest net, so they go last
 *When a plant isn't found, the agent will read your message and use it to decide what to tell the user. Write the exact string you'll return — make it useful to the agent, not just to a human reading logs.*
 
 ```
-[your answer here]
+"Plant '{plant_name}' not found in the database. Available plants are: {available_keys}. Advise the user that this specific plant is not in the database, suggest any similar/matching names from the list of available plants if applicable, or offer general guidance if they describe the plant."
 ```
+
+> [!NOTE]
+> **Why we exclude aliases from the not-found message:**
+> Returning all aliases for all plants would significantly bloat the token count and confuse the LLM. By only returning the primary plant keys/slugs, we keep the prompt compact. The LLM can rely on its own generalized knowledge to map unrecognized plant aliases back to these canonical slugs if the user provides one.
 
 ---
 
@@ -91,17 +100,17 @@ likely match for clean user input. Aliases are the broadest net, so they go last
 
 **Test: does `"devil's ivy"` return the pothos entry?**
 ```
-[yes / no — if no, describe what happened]
+yes
 ```
 
 **Test: does `"SNAKE PLANT"` return the snake plant entry?**
 ```
-[yes / no — if no, describe what happened]
+yes
 ```
 
 **One edge case you discovered while implementing:**
 ```
-[your answer here]
+Users might include spaces or hyphens that differ from standard slugs (e.g., 'snake plant' instead of 'snake_plant'). By prioritizing display_name and alias checks, we avoid requiring users to guess the exact database keys.
 ```
 
 ---
@@ -183,12 +192,12 @@ The full season dict from `_season_data`, plus a `detected_season` boolean. Exam
 
 **Test: does calling with `season=None` return the correct season for the current month?**
 ```
-Current month: [month]
-Expected season: [season]
-Returned season: [season]
+Current month: 6
+Expected season: summer
+Returned season: summer
 ```
 
 **Test: does calling with `season="winter"` return winter data regardless of the current month?**
 ```
-[yes / no]
+yes
 ```
