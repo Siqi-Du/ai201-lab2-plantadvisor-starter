@@ -13,26 +13,95 @@ This is the core of what makes Plant Advisor an *agent* rather than a simple cha
 
 ### Agent Loop Flowchart
 
+Here is the flow chart of the agent loop in both ASCII and Mermaid format.
+
+#### 1. ASCII Flowchart (Text-based Drawing)
+```
+               ┌──────────────────────────────┐
+               │       Start `run_agent()`    │
+               └──────────────┬───────────────┘
+                              │
+                              ▼
+               ┌──────────────────────────────┐
+               │ Initialize messages list     │
+               │ (System + History + User)    │
+               └──────────────┬───────────────┘
+                              │
+                              ▼
+               ┌──────────────────────────────┐
+               │     Set `round_count = 0`    │
+               └──────────────┬───────────────┘
+                              │
+                              ▼
+        ┌──────────► ┌────────────────────────┐
+        │            │      Call LLM API      │
+        │            │  (with messages/tools) │
+        │            └──────────┬─────────────┘
+        │                       │
+        │                       ▼
+        │            ┌────────────────────────┐
+        │            │   Are tool calls       │
+        │            │   requested?           │
+        │            └────┬──────────────┬────┘
+        │                 │              │
+        │             Yes │              │ No
+        │                 ▼              ▼
+        │            ┌──────────┐   ┌────────────────────────┐
+        │            │  Rounds  │   │ Extract text content   │
+        │            │  Limit   │   │ from assistant message │
+        │            │ Reached? │   └──────────┬─────────────┘
+        │            └────┬─┬───┘              │
+        │              No │ │ Yes              ▼
+        │                 │ │       ┌────────────────────────┐
+        │                 │ └──────►│ Call LLM without tools │
+        │                 ▼         │ (Force text response)  │
+        │   ┌─────────────────────┐ └──────────┬─────────────┘
+        │   │ Append assistant    │            │
+        │   │ message to list     │◄───────────┘
+        │   └─────────────┬───────┘
+        │                 │
+        │                 ▼
+        │   ┌─────────────────────┐
+        │   │ Execute tool calls  │
+        │   │ (dispatch_tool)     │
+        │   └─────────────┬───────┘
+        │                 │
+        │                 ▼
+        │   ┌─────────────────────┐
+        │   │ Append tool results │
+        │   │ to messages list    │
+        │   └─────────────┬───────┘
+        │                 │
+        │                 ▼
+        │   ┌─────────────────────┐
+        │   │ Increment           │
+        │   │ `round_count`       │
+        │   └─────────────┬───────┘
+        │                 │
+        └─────────────────┘
+```
+
+#### 2. Fixed Mermaid Diagram (Rich Display)
 ```mermaid
 graph TD
-    Start([Start run_agent]) --> Init[Initialize messages list<br>System Prompt + History + User Message]
-    Init --> ResetRound[Set round_count = 0]
-    ResetRound --> CallLLM[Call LLM API<br>with messages & tools]
+    Start([Start run_agent]) --> Init["Initialize messages list<br>(System Prompt + History + User Message)"]
+    Init --> ResetRound["Set round_count = 0"]
+    ResetRound --> CallLLM["Call LLM API<br>(with messages & tools)"]
     
-    CallLLM --> CheckTools{Does assistant_message<br>request tool_calls?}
+    CallLLM --> CheckTools{"Does assistant_message<br>request tool_calls?"}
     
-    CheckTools -- No --> ReturnText[Extract content from assistant_message]
+    CheckTools -- No --> ReturnText["Extract content from assistant_message"]
     ReturnText --> End([Return final response])
     
-    CheckTools -- Yes --> CheckRounds{round_count >= MAX_TOOL_ROUNDS?}
+    CheckTools -- Yes --> CheckRounds{"round_count >= MAX_TOOL_ROUNDS?"}
     
-    CheckRounds -- Yes --> ForceText[Call LLM API without tools<br>Force final text response]
+    CheckRounds -- Yes --> ForceText["Call LLM API without tools<br>(Force final text response)"]
     ForceText --> ReturnText
     
-    CheckRounds -- No --> AppendAssistant[Append assistant_message<br>to messages list]
-    AppendAssistant --> ExecTools[For each tool call:<br>Execute dispatch_tool()]
-    ExecTools --> AppendResults[Append tool result messages<br>to messages list]
-    AppendResults --> IncRound[Increment round_count]
+    CheckRounds -- No --> AppendAssistant["Append assistant_message<br>to messages list"]
+    AppendAssistant --> ExecTools["For each tool call:<br>Execute dispatch_tool()"]
+    ExecTools --> AppendResults["Append tool result messages<br>to messages list"]
+    AppendResults --> IncRound["Increment round_count"]
     IncRound --> CallLLM
     
     classDef default fill:#1f2937,stroke:#4b5563,stroke-width:1px,color:#f3f4f6;
