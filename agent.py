@@ -89,8 +89,14 @@ SYSTEM_PROMPT = (
 def dispatch_tool(tool_name: str, tool_args: dict) -> str:
     """Route a tool call to the correct function and return the result as a JSON string."""
     print(f"  → Tool call: {tool_name}({tool_args})")
-    if tool_name == "lookup_plant":
-        result = lookup_plant(tool_args["plant_name"])
+    if not isinstance(tool_args, dict):
+        result = {"error": "Arguments must be a key-value dictionary object."}
+    elif tool_name == "lookup_plant":
+        plant_name = tool_args.get("plant_name")
+        if not plant_name:
+            result = {"error": "Missing required argument 'plant_name'."}
+        else:
+            result = lookup_plant(plant_name)
     elif tool_name == "get_seasonal_conditions":
         result = get_seasonal_conditions(tool_args.get("season"))
     else:
@@ -126,39 +132,49 @@ def run_agent(user_message: str, history: list) -> str:
 
     messages.append({"role": "user", "content": user_message})
 
-    round_count = 0
-    while round_count < MAX_TOOL_ROUNDS:
+    try:
+        round_count = 0
+        while round_count < MAX_TOOL_ROUNDS:
+            response = _client.chat.completions.create(
+                model=LLM_MODEL,
+                messages=messages,
+                tools=TOOL_DEFINITIONS,
+                tool_choice="auto",
+            )
+            assistant_message = response.choices[0].message
+
+            if not assistant_message.tool_calls:
+                return assistant_message.content or ""
+
+            # Must append assistant message with tool calls before appending the tool results
+            messages.append(assistant_message)
+
+            for tool_call in assistant_message.tool_calls:
+                tool_name = tool_call.function.name
+                try:
+                    tool_args = json.loads(tool_call.function.arguments)
+                    tool_result = dispatch_tool(tool_name, tool_args)
+                except json.JSONDecodeError as e:
+                    tool_result = json.dumps({
+                        "error": f"Invalid JSON in arguments: {str(e)}. Please correct the syntax."
+                    })
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": tool_call.id,
+                    "content": tool_result,
+                })
+
+            round_count += 1
+
+        # Graceful degradation if MAX_TOOL_ROUNDS is reached:
+        # Force a final response by calling without tool definitions
         response = _client.chat.completions.create(
             model=LLM_MODEL,
             messages=messages,
-            tools=TOOL_DEFINITIONS,
-            tool_choice="auto",
         )
-        assistant_message = response.choices[0].message
+        return response.choices[0].message.content or ""
 
-        if not assistant_message.tool_calls:
-            return assistant_message.content or ""
-
-        # Must append assistant message with tool calls before appending the tool results
-        messages.append(assistant_message)
-
-        for tool_call in assistant_message.tool_calls:
-            tool_name = tool_call.function.name
-            tool_args = json.loads(tool_call.function.arguments)
-            tool_result = dispatch_tool(tool_name, tool_args)
-
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": tool_result,
-            })
-
-        round_count += 1
-
-    # Graceful degradation if MAX_TOOL_ROUNDS is reached:
-    # Force a final response by calling without tool definitions
-    response = _client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=messages,
-    )
-    return response.choices[0].message.content or ""
+    except Exception as e:
+        print(f"Error executing agent loop: {e}")
+        return "I'm sorry, I encountered an issue connecting to my service. Please try again in a moment. 🌱"
