@@ -88,6 +88,10 @@ SYSTEM_PROMPT = (
 
 def dispatch_tool(tool_name: str, tool_args: dict) -> str:
     """Route a tool call to the correct function and return the result as a JSON string."""
+    # Some models send arguments as JSON "null" for no-argument tools, which
+    # json.loads() turns into None — normalize so .get() below is always safe.
+    if not isinstance(tool_args, dict):
+        tool_args = {}
     print(f"  → Tool call: {tool_name}({tool_args})")
     if not isinstance(tool_args, dict):
         result = {"error": "Arguments must be a key-value dictionary object."}
@@ -125,10 +129,15 @@ def run_agent(user_message: str, history: list) -> str:
     """
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-    for user_msg, assistant_msg in history:
-        messages.append({"role": "user", "content": user_msg})
-        if assistant_msg:
-            messages.append({"role": "assistant", "content": assistant_msg})
+    for msg in history:
+        if isinstance(msg, dict):
+            role = msg.get("role")
+            content = msg.get("content")
+        else:
+            role = getattr(msg, "role", None)
+            content = getattr(msg, "content", None)
+        if role and content:
+            messages.append({"role": role, "content": content})
 
     messages.append({"role": "user", "content": user_message})
 
