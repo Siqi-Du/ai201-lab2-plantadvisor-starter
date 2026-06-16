@@ -69,8 +69,11 @@ SYSTEM_PROMPT = (
     "Help users care for their houseplants by looking up specific plant information "
     "and current seasonal conditions using your available tools.\n\n"
     "Always use your tools to look up plant-specific information before answering — "
-    "don't rely on your general knowledge alone. If a plant isn't in your database, "
-    "say so clearly and offer general guidance based on what the user describes.\n\n"
+    "don't rely on your general knowledge alone. If a plant lookup returns that the "
+    "plant is not found in the database (found: False), say so clearly to the user "
+    "and do not invent specific care instructions (such as watering frequencies or temperature ranges) "
+    "as if they came from the database. Instead, offer general care guidelines for the plant type "
+    "based on what the user describes, and guide them on how to find specific information.\n\n"
     "Keep your advice practical and specific. Cite the source of your information "
     "when you have it (e.g., 'According to the care data for your monstera...')."
 )
@@ -104,13 +107,7 @@ def run_agent(user_message: str, history: list) -> str:
     """
     Run the plant care agent for one user turn and return its response.
 
-    TODO — Milestone 2:
-
-    The agent loop follows a specific pattern that you'll implement here. Read
-    specs/agent-loop-spec.md carefully before writing any code — understand the
-    full loop before implementing any part of it.
-
-    The loop works like this:
+    The agent loop follows a specific pattern:
       1. Build a messages list: system prompt + conversation history + new user message
       2. Call the LLM with messages and TOOL_DEFINITIONS
       3. If the response contains tool_calls:
@@ -119,13 +116,49 @@ def run_agent(user_message: str, history: list) -> str:
            c. Call the LLM again with the updated messages
            d. Repeat until no more tool_calls (or MAX_TOOL_ROUNDS is reached)
       4. Return the final text response
-
-    Key details to get right:
-      - The assistant message must be appended BEFORE tool results
-      - Tool result messages use role="tool" with a tool_call_id field
-      - Append the assistant's message object directly (not just its content)
-      - The history format from Gradio: list of [user_message, assistant_message] pairs
-
-    Before writing code, complete specs/agent-loop-spec.md.
     """
-    return "🌱 Agent not yet implemented. Complete Milestone 2 to activate the Plant Advisor."
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+
+    for user_msg, assistant_msg in history:
+        messages.append({"role": "user", "content": user_msg})
+        if assistant_msg:
+            messages.append({"role": "assistant", "content": assistant_msg})
+
+    messages.append({"role": "user", "content": user_message})
+
+    round_count = 0
+    while round_count < MAX_TOOL_ROUNDS:
+        response = _client.chat.completions.create(
+            model=LLM_MODEL,
+            messages=messages,
+            tools=TOOL_DEFINITIONS,
+            tool_choice="auto",
+        )
+        assistant_message = response.choices[0].message
+
+        if not assistant_message.tool_calls:
+            return assistant_message.content or ""
+
+        # Must append assistant message with tool calls before appending the tool results
+        messages.append(assistant_message)
+
+        for tool_call in assistant_message.tool_calls:
+            tool_name = tool_call.function.name
+            tool_args = json.loads(tool_call.function.arguments)
+            tool_result = dispatch_tool(tool_name, tool_args)
+
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": tool_result,
+            })
+
+        round_count += 1
+
+    # Graceful degradation if MAX_TOOL_ROUNDS is reached:
+    # Force a final response by calling without tool definitions
+    response = _client.chat.completions.create(
+        model=LLM_MODEL,
+        messages=messages,
+    )
+    return response.choices[0].message.content or ""
